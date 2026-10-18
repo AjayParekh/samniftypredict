@@ -603,6 +603,9 @@ SESSION.mount("http://", adapter)
 SESSION.mount("https://", adapter)
 
 def fetch_master_data(symbol_dict):
+    # Nifty / Sensex / BankNifty come from Upstox (prefetched below); others stay on TradingView
+    if symbol_dict["name"] in UPSTOX_INDEX_KEYS and symbol_dict["name"] in upstox_index_quotes:
+        return symbol_dict, upstox_index_quotes[symbol_dict["name"]]
     payload = {
         "symbols": {"tickers": [symbol_dict["tv_symbol"]], "query": {"types": []}},
         "columns": ["close", "change", "change_abs"]
@@ -954,6 +957,49 @@ def parse_futures_flow(data, title="OI Flow Details", key_prefix=None, key_conta
 # ==============================
 # FETCH ALL DATA (master symbols + OI Flow)
 # ==============================
+UPSTOX_INDEX_KEYS = {
+    "NIFTY 50":   "NSE_INDEX|Nifty 50",
+    "SENSEX":     "BSE_INDEX|SENSEX",
+    "BANK NIFTY": "NSE_INDEX|Nifty Bank",
+}
+
+def fetch_upstox_index_quotes():
+    """Live index prices from Upstox. Returns {name: (prev_close, close, change_abs, pct)}."""
+    out = {}
+    try:
+        r = requests.get(
+            'https://api.upstox.com/v2/market-quote/quotes',
+            params={'instrument_key': ",".join(UPSTOX_INDEX_KEYS.values())},
+            headers={'Accept': 'application/json', 'Authorization': access_token},
+            timeout=5
+        )
+        d = json.loads(r.text)
+        if d.get("status") != "success":
+            return out
+        by_token = {}
+        for k, v in (d.get("data") or {}).items():
+            by_token[k.replace(":", "|")] = v
+            if v.get("instrument_token"):
+                by_token[v["instrument_token"]] = v
+        for name, key in UPSTOX_INDEX_KEYS.items():
+            q = by_token.get(key)
+            if not q:
+                continue
+            close = q.get("last_price")
+            if not close:
+                continue
+            net = q.get("net_change")
+            if net is None:
+                net = close - ((q.get("ohlc") or {}).get("close") or close)
+            prev = close - net
+            pct = (net / prev * 100) if prev else 0
+            out[name] = (round(prev, 2), round(close, 2), round(net, 2), round(pct, 2))
+    except Exception as e:
+        print(f"Error fetching Upstox index quotes: {e}")
+    return out
+
+upstox_index_quotes = fetch_upstox_index_quotes()
+
 with ThreadPoolExecutor(max_workers=len(master_symbols)) as executor:
     results = list(executor.map(fetch_master_data, master_symbols))
 
