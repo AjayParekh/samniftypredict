@@ -429,6 +429,12 @@ banknifty_option_chain_response = fetch_option_chain('NSE_INDEX|Nifty Bank', ban
 banknifty_greeks_by_strike = parse_greeks_by_strike(banknifty_option_chain_response)
 
 def reusable_display_oi_data(upstoxResponse, title):
+    # Guard: API can return status "success" with data = None (market closed / data not published yet)
+    if not upstoxResponse or not upstoxResponse.get("data"):
+        st.subheader(title)
+        st.info("ℹ️ No data available right now (market closed or data not yet published).")
+        return
+
     data = upstoxResponse["data"]
     Total_Puts = 0
     Total_Calls = 0
@@ -1122,7 +1128,7 @@ else:                                                              card_class_c2
 # ==============================
 # CODE 3 – OI prediction (Nifty)
 # ==============================
-change_oi_data = upstoxOiChangeResponse["data"]["call_put_oi_data_list"] if upstoxOiChangeResponse.get("status") == "success" else None
+change_oi_data = (upstoxOiChangeResponse.get("data") or {}).get("call_put_oi_data_list") if upstoxOiChangeResponse.get("status") == "success" else None
 oi_signal = compute_oi_signal(data["call_put_oi_data_list"], nifty_price, change_oi_data, nifty_macro_score)
 
 # Determine OI card style
