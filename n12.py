@@ -1129,7 +1129,28 @@ else:                                                              card_class_c2
 # CODE 3 – OI prediction (Nifty)
 # ==============================
 change_oi_data = (upstoxOiChangeResponse.get("data") or {}).get("call_put_oi_data_list") if upstoxOiChangeResponse.get("status") == "success" else None
-oi_signal = compute_oi_signal(data["call_put_oi_data_list"], nifty_price, change_oi_data, nifty_macro_score)
+oi_list_main = data.get("call_put_oi_data_list") if isinstance(data, dict) else None
+if oi_list_main:
+    oi_signal = compute_oi_signal(oi_list_main, nifty_price, change_oi_data, nifty_macro_score)
+else:
+    # Main OI data not available (market closed / not published yet) -> neutral fallback
+    oi_signal = {
+        "direction": "NEUTRAL",
+        "target": 0.0,
+        "stop_loss": 0.0,
+        "confidence": 0.0,
+        "max_pain": 0.0,
+        "resistance": 0.0,
+        "support": 0.0,
+        "pcr": 0.0,
+        "bull_votes": 0,
+        "bear_votes": 0,
+        "net_call_change": 0,
+        "net_put_change": 0,
+        "macro_flow_score": nifty_macro_score,
+        "max_call_change_strike": None,
+        "max_put_change_strike": None,
+    }
 
 # Determine OI card style
 if oi_signal["direction"] == "BULLISH":
