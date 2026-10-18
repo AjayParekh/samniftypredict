@@ -207,6 +207,28 @@ days_until_tuesday = (1 - ist_now.weekday()) % 7  # Monday=0 ... Tuesday=1
 expiry_date = ist_now + dt_mod.timedelta(days=days_until_tuesday)
 expiry_str = expiry_date.strftime('%Y-%m-%d')
 
+# Holiday-safe expiry: ask Upstox for the real upcoming expiry (handles holiday shifts like
+# Dussehra 20-Oct-2026 -> Nifty expiry moves to Mon 19-Oct). Falls back to the computed date.
+@st.cache_data(ttl=1800)
+def get_nearest_expiry(instrument_key, fallback_str, today_key):
+    try:
+        r = requests.get(
+            'https://api.upstox.com/v2/option/contract',
+            params={'instrument_key': instrument_key},
+            headers={'Accept': 'application/json', 'Authorization': access_token},
+            timeout=10
+        )
+        d = json.loads(r.text)
+        expiries = sorted({c.get('expiry') for c in (d.get('data') or []) if c.get('expiry')})
+        upcoming = [e for e in expiries if e >= today_key]
+        if upcoming:
+            return upcoming[0]
+    except Exception:
+        pass
+    return fallback_str
+
+expiry_str = get_nearest_expiry('NSE_INDEX|Nifty 50', expiry_str, today_str)
+
 # Sensex weekly expiry is Thursday (BSE, effective 4 Sep 2025)
 days_until_thursday = (3 - ist_now.weekday()) % 7  # Monday=0 ... Thursday=3
 sensex_expiry_date = ist_now + dt_mod.timedelta(days=days_until_thursday)
